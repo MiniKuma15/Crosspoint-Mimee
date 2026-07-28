@@ -1,4 +1,8 @@
-# CrossPoint Reader
+# Crosspoint-Mimee
+
+> **Crosspoint-Mimee** is a fork of the CrossPoint Reader project, customized with Thai language support, Thai documentation, and additional features for Thai users.
+
+---
 
 [![Fund contributors](https://img.shields.io/badge/%F0%9F%91%91_Fund_contributors-royalty.dev-BB953A?style=for-the-badge&labelColor=1a1a1a)](https://app.royalty.dev/crosspoint-reader/crosspoint-reader)
 
