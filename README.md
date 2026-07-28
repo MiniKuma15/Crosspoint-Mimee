@@ -1,4 +1,4 @@
-# Crosspoint-Mimee
+# Minee Reader
 
 > **Crosspoint-Mimee** is a fork of the CrossPoint Reader project, customized with Thai language support, Thai documentation, and additional features for Thai users.
 
