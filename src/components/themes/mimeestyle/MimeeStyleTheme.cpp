@@ -28,14 +28,14 @@ constexpr int cornerRadius = 6;
 constexpr int gridColumns = 3;
 constexpr int gridRows = 2;
 constexpr int gridRowGap = 2;
-constexpr int selectedTitleStripHeight = 20;
+constexpr int selectedTitleStripHeight = 24;
 constexpr int dividerMarginTop = 8;
 // Gap between the selected-title strip and line B (grid <-> continue-reading divider)
-constexpr int gridToContinueGap = 4;
+constexpr int gridToContinueGap = 20;
 // How far the continue-reading cover pokes above line B
-constexpr int continueReadingOverlap = 16;
+constexpr int continueReadingOverlap = 14;
 // Extra room below the continue-reading cover before line A
-constexpr int continueReadingBottomPadding = 10;
+constexpr int continueReadingBottomPadding = 20;
 // Line A (short divider) insets: left = gap from cover's right edge, right = gap from screen edge
 constexpr int lineAInsetLeft = 8;
 constexpr int lineAInsetRight = 16;
@@ -165,7 +165,7 @@ int MimeeStyleTheme::drawGridAndSelectedTitle(GfxRenderer& renderer, Rect rect,
   }
 
   // --- Selected-title strip, directly under the grid, right-aligned ---
-  const int titleStripY = rect.y + gridHeight + 2;
+  const int titleStripY = rect.y + gridHeight + 4;
   if (itemCount > 0 && selectorIndex >= 0 && selectorIndex < itemCount) {
     const int maxWidth = rect.width - 2 * MimeeStyleMetrics::values.contentSidePadding;
     const auto truncatedTitle =
@@ -289,16 +289,31 @@ bool MimeeStyleTheme::recentBookIndexFromPoint(Rect rect, const std::vector<Rece
   const int gridTop = rect.y;
   const int gridHeight = gridRows * rowHeight + (gridRows - 1) * gridRowGap;
 
-  if (x < gridLeft || x >= gridLeft + tileWidth * gridColumns) return false;
-  if (y < gridTop || y >= gridTop + gridHeight) return false;
+  if (x >= gridLeft && x < gridLeft + tileWidth * gridColumns && y >= gridTop && y < gridTop + gridHeight) {
+    const int col = (x - gridLeft) / tileWidth;
+    const int row = (y - gridTop) / (rowHeight + gridRowGap);
+    const int tappedIndex = row * gridColumns + col;
+    if (tappedIndex < 0 || tappedIndex >= itemCount) return false;
+    index = tappedIndex;
+    return true;
+  }
 
-  const int col = (x - gridLeft) / tileWidth;
-  const int row = (y - gridTop) / (rowHeight + gridRowGap);
-  const int tappedIndex = row * gridColumns + col;
+  // "Continue reading" strip - always recentBooks[0]. Geometry duplicated
+  // from drawGridAndSelectedTitle()/drawContinueReadingStrip() (keep the
+  // two in sync if those layout constants change). The tappable zone is
+  // generous (whole strip band, not just the cover pixels) for an easier
+  // touch target.
+  const int titleStripY = rect.y + gridHeight + 4;
+  const int afterGridY = titleStripY + selectedTitleStripHeight;
+  const int lineBY = afterGridY + gridToContinueGap;
+  const int coverTopY = lineBY - continueReadingOverlap;
+  const int continueReadingBottom = coverTopY + MimeeStyleMetrics::values.homeCoverHeight + continueReadingBottomPadding;
+  if (x >= rect.x && x < rect.x + rect.width && y >= coverTopY && y < continueReadingBottom) {
+    index = 0;
+    return true;
+  }
 
-  if (tappedIndex < 0 || tappedIndex >= itemCount) return false;
-  index = tappedIndex;
-  return true;
+  return false;
 }
 
 // ---------------------------------------------------------------------------
