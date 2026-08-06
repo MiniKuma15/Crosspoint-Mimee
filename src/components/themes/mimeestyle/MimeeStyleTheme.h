@@ -16,20 +16,26 @@ constexpr ThemeMetrics values = [] {
   v.homeRecentBooksCount = 6;
 
   // Cover height *inside a grid cell*, and also the continue-reading cover
-  // height (same size, per design). Kept as-is per your feedback - only the
-  // on-screen white margin around grid covers was the problem, not the size.
+  // height (same size, per design). Back to 180 - kept, not shrunk.
   v.homeCoverHeight = 180;
 
-  // More room for the "Bookshelf" header than Lyra's default, so the grid
-  // below doesn't creep up into the header text.
-  v.homeTopPadding = 66;
+  // Header gap.
+  v.homeTopPadding = 90;
 
   // Total height reserved for: grid (2 rows) + selected-title strip +
-  // continue-reading strip + divider lines. Shrunk slightly (via tighter
-  // internal gaps, not a smaller cover) to compensate for the taller
-  // homeTopPadding above, so the icon toolbar still clears the button-hints
-  // bar at the bottom. Tune this on-device to match your screen exactly.
-  v.homeCoverTileHeight = 612;
+  // continue-reading strip + divider lines. Tune this on-device to match
+  // your screen resolution exactly.
+  v.homeCoverTileHeight = 642;
+
+  // Gap between the cover-tile area and the icon toolbar below it.
+  v.homeMenuTopOffset = 24;
+
+  // Number of columns in the recent-books grid. Used by HomeActivity so
+  // physical Up/Down presses move a full row (vertically) instead of one
+  // book at a time; Left/Right (and touch) still move one book at a time.
+  // Other themes leave this at the BaseTheme default (1), which keeps
+  // their Up/Down behaving exactly as before.
+  v.homeGridColumns = 3;
 
   // Continue-reading title is never shown in the header for this theme
   // (it's shown in its own strip instead)
