@@ -27,18 +27,23 @@ constexpr int hPaddingInSelection = 8;
 constexpr int cornerRadius = 6;
 constexpr int gridColumns = 3;
 constexpr int gridRows = 2;
-constexpr int gridRowGap = 6;
-constexpr int selectedTitleStripHeight = 26;
+constexpr int gridRowGap = 2;
+constexpr int selectedTitleStripHeight = 20;
 constexpr int dividerMarginTop = 8;
 // Gap between the selected-title strip and line B (grid <-> continue-reading divider)
-constexpr int gridToContinueGap = 10;
+constexpr int gridToContinueGap = 4;
 // How far the continue-reading cover pokes above line B
 constexpr int continueReadingOverlap = 16;
 // Extra room below the continue-reading cover before line A
-constexpr int continueReadingBottomPadding = 24;
+constexpr int continueReadingBottomPadding = 10;
 // Line A (short divider) insets: left = gap from cover's right edge, right = gap from screen edge
 constexpr int lineAInsetLeft = 8;
 constexpr int lineAInsetRight = 16;
+// Real ebook cover aspect ratio (1600x2560), used to give every grid cover
+// a fixed, correctly-proportioned width so it fills its border with no
+// leftover white margin (instead of centering a variably-sized cover in a
+// too-wide slot).
+constexpr float kCoverAspect = 1600.0f / 2560.0f;  // width / height
 
 // Same 32px icon set the Home menu already uses (see HomeActivity.cpp /
 // LyraTheme.cpp) - duplicated here since LyraTheme's lookup is file-local.
@@ -74,10 +79,16 @@ int MimeeStyleTheme::drawGridAndSelectedTitle(GfxRenderer& renderer, Rect rect,
                                               bool& coverRendered, bool& coverBufferStored,
                                               std::function<bool()> storeCoverBuffer) const {
   const int tileWidth = (rect.width - 2 * MimeeStyleMetrics::values.contentSidePadding) / gridColumns;
-  const int rowHeight = MimeeStyleMetrics::values.homeCoverHeight + 2 * hPaddingInSelection;
+  const int slotHeight = MimeeStyleMetrics::values.homeCoverHeight;
+  const int rowHeight = slotHeight + 2 * hPaddingInSelection;
   const int gridHeight = gridRows * rowHeight + (gridRows - 1) * gridRowGap;
   const int itemCount =
       std::min(static_cast<int>(recentBooks.size()), MimeeStyleMetrics::values.homeRecentBooksCount);
+
+  // Fixed cover width for every grid cell, derived from the real ebook
+  // cover aspect ratio - NOT from the tile width - so the border/highlight
+  // always hugs the cover exactly (no leftover white margin either side).
+  const int coverBoxWidth = static_cast<int>(slotHeight * kCoverAspect + 0.5f);
 
   // --- Load + draw covers (only on first render; buffer is stored/restored afterwards) ---
   if (!coverRendered) {
@@ -86,36 +97,33 @@ int MimeeStyleTheme::drawGridAndSelectedTitle(GfxRenderer& renderer, Rect rect,
       const int row = i / gridColumns;
       const int tileX = rect.x + MimeeStyleMetrics::values.contentSidePadding + tileWidth * col;
       const int tileY = rect.y + row * (rowHeight + gridRowGap);
+      const int coverX = tileX + (tileWidth - coverBoxWidth) / 2;
 
       std::string coverPath = recentBooks[i].coverBmpPath;
       bool hasCover = true;
-      const int slotInnerWidth = tileWidth - 2 * hPaddingInSelection;
-      const int slotHeight = MimeeStyleMetrics::values.homeCoverHeight;
       if (coverPath.empty()) {
         hasCover = false;
       } else {
-        const std::string coverBmpPath =
-            UITheme::getCoverThumbPath(coverPath, MimeeStyleMetrics::values.homeCoverHeight);
+        const std::string coverBmpPath = UITheme::getCoverThumbPath(coverPath, slotHeight);
         HalFile file;
         if (Storage.openFileForRead("HOME", coverBmpPath, file)) {
           Bitmap bitmap(file);
           if (bitmap.parseHeaders() == BmpReaderError::Ok) {
-            // Fit (not crop): scale the bitmap to slotHeight tall, keep its
-            // real aspect ratio, and center it horizontally in the slot. If
-            // the resulting width would overflow the slot (unusually wide
-            // cover), clamp the width instead so it never bleeds into the
-            // next column - only that rare case gets any cropping.
             const float coverW = static_cast<float>(bitmap.getWidth());
             const float coverH = static_cast<float>(bitmap.getHeight());
             const float ratio = coverW / coverH;
-            int drawWidth = static_cast<int>(slotHeight * ratio);
-            float cropX = 0.0f;
-            if (drawWidth > slotInnerWidth) {
-              cropX = 1.0f - (static_cast<float>(slotInnerWidth) / static_cast<float>(drawWidth));
-              drawWidth = slotInnerWidth;
+            const int naturalWidth = static_cast<int>(slotHeight * ratio);
+            if (naturalWidth >= coverBoxWidth) {
+              // Slightly wider than our target box (or exactly it) - crop
+              // down to coverBoxWidth so it fills the box exactly.
+              const float cropX = 1.0f - (static_cast<float>(coverBoxWidth) / static_cast<float>(naturalWidth));
+              renderer.drawBitmap(bitmap, coverX, tileY + hPaddingInSelection, coverBoxWidth, slotHeight, cropX);
+            } else {
+              // Narrower than the box (unusual cover) - draw at its own
+              // width, centered, rather than stretching it.
+              const int drawX = coverX + (coverBoxWidth - naturalWidth) / 2;
+              renderer.drawBitmap(bitmap, drawX, tileY + hPaddingInSelection, naturalWidth, slotHeight);
             }
-            const int drawX = tileX + hPaddingInSelection + (slotInnerWidth - drawWidth) / 2;
-            renderer.drawBitmap(bitmap, drawX, tileY + hPaddingInSelection, drawWidth, slotHeight, cropX);
           } else {
             hasCover = false;
           }
@@ -123,14 +131,12 @@ int MimeeStyleTheme::drawGridAndSelectedTitle(GfxRenderer& renderer, Rect rect,
         }
       }
 
-      renderer.drawRect(tileX + hPaddingInSelection, tileY + hPaddingInSelection, tileWidth - 2 * hPaddingInSelection,
-                        MimeeStyleMetrics::values.homeCoverHeight, true);
+      renderer.drawRect(coverX, tileY + hPaddingInSelection, coverBoxWidth, slotHeight, true);
 
       if (!hasCover) {
-        renderer.fillRect(tileX + hPaddingInSelection,
-                          tileY + hPaddingInSelection + (MimeeStyleMetrics::values.homeCoverHeight / 3),
-                          tileWidth - 2 * hPaddingInSelection, 2 * MimeeStyleMetrics::values.homeCoverHeight / 3, true);
-        renderer.drawIcon(CoverIcon, tileX + hPaddingInSelection + 20, tileY + hPaddingInSelection + 20, 24);
+        renderer.fillRect(coverX, tileY + hPaddingInSelection + (slotHeight / 3), coverBoxWidth,
+                          2 * slotHeight / 3, true);
+        renderer.drawIcon(CoverIcon, coverX + (coverBoxWidth - 24) / 2, tileY + hPaddingInSelection + 20, 24);
       }
     }
 
@@ -145,19 +151,21 @@ int MimeeStyleTheme::drawGridAndSelectedTitle(GfxRenderer& renderer, Rect rect,
     const int row = i / gridColumns;
     const int tileX = rect.x + MimeeStyleMetrics::values.contentSidePadding + tileWidth * col;
     const int tileY = rect.y + row * (rowHeight + gridRowGap);
+    const int coverX = tileX + (tileWidth - coverBoxWidth) / 2;
 
-    renderer.fillRoundedRect(tileX, tileY, tileWidth, hPaddingInSelection, cornerRadius, true, true, false, false,
-                             Color::LightGray);
-    renderer.fillRectDither(tileX, tileY + hPaddingInSelection, hPaddingInSelection,
-                            MimeeStyleMetrics::values.homeCoverHeight, Color::LightGray);
-    renderer.fillRectDither(tileX + tileWidth - hPaddingInSelection, tileY + hPaddingInSelection, hPaddingInSelection,
-                            MimeeStyleMetrics::values.homeCoverHeight, Color::LightGray);
-    renderer.fillRoundedRect(tileX, tileY + MimeeStyleMetrics::values.homeCoverHeight + hPaddingInSelection,
-                             tileWidth, hPaddingInSelection, cornerRadius, false, false, true, true, Color::LightGray);
+    renderer.fillRoundedRect(coverX - hPaddingInSelection, tileY, coverBoxWidth + 2 * hPaddingInSelection,
+                             hPaddingInSelection, cornerRadius, true, true, false, false, Color::LightGray);
+    renderer.fillRectDither(coverX - hPaddingInSelection, tileY + hPaddingInSelection, hPaddingInSelection,
+                            slotHeight, Color::LightGray);
+    renderer.fillRectDither(coverX + coverBoxWidth, tileY + hPaddingInSelection, hPaddingInSelection, slotHeight,
+                            Color::LightGray);
+    renderer.fillRoundedRect(coverX - hPaddingInSelection, tileY + slotHeight + hPaddingInSelection,
+                             coverBoxWidth + 2 * hPaddingInSelection, hPaddingInSelection, cornerRadius, false, false,
+                             true, true, Color::LightGray);
   }
 
   // --- Selected-title strip, directly under the grid, right-aligned ---
-  const int titleStripY = rect.y + gridHeight + 4;
+  const int titleStripY = rect.y + gridHeight + 2;
   if (itemCount > 0 && selectorIndex >= 0 && selectorIndex < itemCount) {
     const int maxWidth = rect.width - 2 * MimeeStyleMetrics::values.contentSidePadding;
     const auto truncatedTitle =
@@ -294,6 +302,56 @@ bool MimeeStyleTheme::recentBookIndexFromPoint(Rect rect, const std::vector<Rece
 }
 
 // ---------------------------------------------------------------------------
+// Header - identical to LyraTheme::drawHeader, minus the underline (it
+// collided with the title text in Home's shorter header rect: see
+// MimeeStyleMetrics::values.homeTopPadding).
+// ---------------------------------------------------------------------------
+void MimeeStyleTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* title,
+                                 const char* subtitle) const {
+  renderer.fillRect(rect.x, rect.y, rect.width, rect.height, false);
+
+  const bool showBatteryPercentage =
+      SETTINGS.hideBatteryPercentage != CrossPointSettings::HIDE_BATTERY_PERCENTAGE::HIDE_ALWAYS;
+  const int batteryX = rect.x + rect.width - 12 - MimeeStyleMetrics::values.batteryWidth;
+  drawBatteryRight(
+      renderer,
+      Rect{batteryX, rect.y + 5, MimeeStyleMetrics::values.batteryWidth, MimeeStyleMetrics::values.batteryHeight},
+      showBatteryPercentage);
+
+  int maxTitleWidth = title != nullptr ? renderer.getTextWidth(UI_12_FONT_ID, title, EpdFontFamily::BOLD) : 0;
+  int maxSubtitleWidth =
+      subtitle != nullptr ? renderer.getTextWidth(SMALL_FONT_ID, subtitle, EpdFontFamily::REGULAR) : 0;
+
+  const int availableSpace = rect.width - MimeeStyleMetrics::values.contentSidePadding * 3;
+  if (maxTitleWidth + maxSubtitleWidth > availableSpace) {
+    if ((maxTitleWidth > availableSpace / 2) && (maxSubtitleWidth > availableSpace / 2)) {
+      maxTitleWidth = availableSpace / 2;
+      maxSubtitleWidth = availableSpace / 2;
+    } else if (maxTitleWidth > maxSubtitleWidth) {
+      maxTitleWidth = availableSpace - maxSubtitleWidth;
+    } else {
+      maxSubtitleWidth = availableSpace - maxTitleWidth;
+    }
+  }
+
+  if (title) {
+    auto truncatedTitle = renderer.truncatedText(UI_12_FONT_ID, title, maxTitleWidth, EpdFontFamily::BOLD);
+    renderer.drawText(UI_12_FONT_ID, rect.x + MimeeStyleMetrics::values.contentSidePadding,
+                      rect.y + MimeeStyleMetrics::values.batteryBarHeight + 3, truncatedTitle.c_str(), true,
+                      EpdFontFamily::BOLD);
+    // NOTE: no underline here on purpose (see comment above).
+  }
+
+  if (subtitle) {
+    auto truncatedSubtitle = renderer.truncatedText(SMALL_FONT_ID, subtitle, maxSubtitleWidth, EpdFontFamily::REGULAR);
+    int truncatedSubtitleWidth = renderer.getTextWidth(SMALL_FONT_ID, truncatedSubtitle.c_str());
+    renderer.drawText(SMALL_FONT_ID,
+                      rect.x + rect.width - MimeeStyleMetrics::values.contentSidePadding - truncatedSubtitleWidth,
+                      rect.y + 50, truncatedSubtitle.c_str(), true);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Icon toolbar (replaces Lyra's vertical labeled menu list)
 // ---------------------------------------------------------------------------
 void MimeeStyleTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
@@ -321,8 +379,4 @@ void MimeeStyleTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int butto
       renderer.drawIcon(iconBitmap, iconX, iconY, iconSize);
     }
   }
-
-  // Line C: bottommost divider, full width, right under the icon row.
-  const int lineCY = rect.y + MimeeStyleMetrics::values.menuRowHeight;
-  renderer.drawLine(rect.x, lineCY, rect.x + rect.width - 1, lineCY, 2, true);
 }
