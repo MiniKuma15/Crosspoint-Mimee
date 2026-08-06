@@ -53,6 +53,10 @@ struct ThemeMetrics {
   int homeRecentBooksCount;
   bool homeContinueReadingInMenu;
   int homeMenuTopOffset;
+  // Optional fixed header title for the Home screen (e.g. "Bookshelf").
+  // nullptr (default) keeps the existing behaviour: no title, or the
+  // continue-reading book's title when homeContinueReadingInMenu is set.
+  const char* homeStaticTitle = nullptr;
 
   int buttonHintsHeight;
   int sideButtonHintsWidth;
@@ -206,6 +210,19 @@ class BaseTheme {
   virtual void drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std::vector<RecentBook>& recentBooks,
                                    const int selectorIndex, bool& coverRendered, bool& coverBufferStored,
                                    bool& bufferRestored, std::function<bool()> storeCoverBuffer) const;
+  // Maps a touch point within the recent-books area (the same `rect` passed
+  // to drawRecentBookCover) to a selectable index. Default: legacy
+  // behaviour - always targets the first entry, which is correct for the
+  // single-cover and side-by-side-covers themes. Grid-based themes
+  // (multiple rows) must override this or taps on rows other than the
+  // first will resolve to the wrong book.
+  virtual bool recentBookIndexFromPoint(Rect rect, const std::vector<RecentBook>& recentBooks, int x, int y,
+                                        int& index) const {
+    if (recentBooks.empty()) return false;
+    if (x < rect.x || x >= rect.x + rect.width || y < rect.y || y >= rect.y + rect.height) return false;
+    index = 0;
+    return true;
+  }
   virtual void drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                               const std::function<std::string(int index)>& buttonLabel,
                               const std::function<UIIcon(int index)>& rowIcon) const;
