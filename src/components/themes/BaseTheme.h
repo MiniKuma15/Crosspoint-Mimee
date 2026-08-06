@@ -57,6 +57,9 @@ struct ThemeMetrics {
   // nullptr (default) keeps the existing behaviour: no title, or the
   // continue-reading book's title when homeContinueReadingInMenu is set.
   const char* homeStaticTitle = nullptr;
+  // Columns in the recent-books area, if it's a grid (1 = not a grid, the
+  // default - Up/Down behave exactly as before for every existing theme).
+  int homeGridColumns = 1;
 
   int buttonHintsHeight;
   int sideButtonHintsWidth;
