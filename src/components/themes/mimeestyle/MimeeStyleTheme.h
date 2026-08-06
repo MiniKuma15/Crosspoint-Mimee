@@ -16,17 +16,20 @@ constexpr ThemeMetrics values = [] {
   v.homeRecentBooksCount = 6;
 
   // Cover height *inside a grid cell*, and also the continue-reading cover
-  // height (same size, per design). Real ebook covers are ~1600x2560
-  // (ratio 1.6:1) - a true 1.6:1 grid at this width doesn't fit 2 rows +
-  // a continue-reading row on an 800px-tall screen, so this is the
-  // tallest/most book-like ratio (~1.36:1) that still fits. Tune on-device.
+  // height (same size, per design). Kept as-is per your feedback - only the
+  // on-screen white margin around grid covers was the problem, not the size.
   v.homeCoverHeight = 180;
 
+  // More room for the "Bookshelf" header than Lyra's default, so the grid
+  // below doesn't creep up into the header text.
+  v.homeTopPadding = 66;
+
   // Total height reserved for: grid (2 rows) + selected-title strip +
-  // continue-reading strip + divider lines. Sized to reach almost all the
-  // way down to the button-hints bar (no dead space above it). Tune this
-  // on-device to match your screen resolution exactly.
-  v.homeCoverTileHeight = 642;
+  // continue-reading strip + divider lines. Shrunk slightly (via tighter
+  // internal gaps, not a smaller cover) to compensate for the taller
+  // homeTopPadding above, so the icon toolbar still clears the button-hints
+  // bar at the bottom. Tune this on-device to match your screen exactly.
+  v.homeCoverTileHeight = 612;
 
   // Continue-reading title is never shown in the header for this theme
   // (it's shown in its own strip instead)
@@ -55,6 +58,11 @@ class MimeeStyleTheme : public LyraTheme {
   void drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                       const std::function<std::string(int index)>& buttonLabel,
                       const std::function<UIIcon(int index)>& rowIcon) const override;
+
+  // Same as LyraTheme's header, minus the underline (it collided with the
+  // title text in Home's shorter header rect).
+  void drawHeader(const GfxRenderer& renderer, Rect rect, const char* title,
+                  const char* subtitle = nullptr) const override;
 
   // Hit-tests a touch point against the 2x3 grid (see BaseTheme.h for why
   // this override is required for multi-row cover themes).
