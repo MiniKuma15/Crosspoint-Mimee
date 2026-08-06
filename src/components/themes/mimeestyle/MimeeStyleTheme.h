@@ -15,15 +15,18 @@ constexpr ThemeMetrics values = [] {
   // How many books to load/select in the grid (2 rows x 3 cols)
   v.homeRecentBooksCount = 6;
 
-  // Cover height *inside a grid cell* (smaller than Lyra's single big cover,
-  // since we need room for 2 rows). Tune this on-device.
-  v.homeCoverHeight = 150;
+  // Cover height *inside a grid cell*, and also the continue-reading cover
+  // height (same size, per design). Real ebook covers are ~1600x2560
+  // (ratio 1.6:1) - a true 1.6:1 grid at this width doesn't fit 2 rows +
+  // a continue-reading row on an 800px-tall screen, so this is the
+  // tallest/most book-like ratio (~1.36:1) that still fits. Tune on-device.
+  v.homeCoverHeight = 180;
 
   // Total height reserved for: grid (2 rows) + selected-title strip +
-  // continue-reading strip + divider line. Tune this on-device to match
-  // your screen resolution - this is the main knob if things overlap the
-  // button menu below.
-  v.homeCoverTileHeight = 430;
+  // continue-reading strip + divider lines. Sized to reach almost all the
+  // way down to the button-hints bar (no dead space above it). Tune this
+  // on-device to match your screen resolution exactly.
+  v.homeCoverTileHeight = 642;
 
   // Continue-reading title is never shown in the header for this theme
   // (it's shown in its own strip instead)

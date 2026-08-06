@@ -29,13 +29,13 @@ constexpr int gridColumns = 3;
 constexpr int gridRows = 2;
 constexpr int gridRowGap = 6;
 constexpr int selectedTitleStripHeight = 26;
-constexpr int continueReadingCoverHeight = 64;
-constexpr int continueReadingStripHeight = 84;
 constexpr int dividerMarginTop = 8;
 // Gap between the selected-title strip and line B (grid <-> continue-reading divider)
 constexpr int gridToContinueGap = 10;
 // How far the continue-reading cover pokes above line B
 constexpr int continueReadingOverlap = 16;
+// Extra room below the continue-reading cover before line A
+constexpr int continueReadingBottomPadding = 24;
 // Line A (short divider) insets: left = gap from cover's right edge, right = gap from screen edge
 constexpr int lineAInsetLeft = 8;
 constexpr int lineAInsetRight = 16;
@@ -89,6 +89,8 @@ int MimeeStyleTheme::drawGridAndSelectedTitle(GfxRenderer& renderer, Rect rect,
 
       std::string coverPath = recentBooks[i].coverBmpPath;
       bool hasCover = true;
+      const int slotInnerWidth = tileWidth - 2 * hPaddingInSelection;
+      const int slotHeight = MimeeStyleMetrics::values.homeCoverHeight;
       if (coverPath.empty()) {
         hasCover = false;
       } else {
@@ -98,14 +100,22 @@ int MimeeStyleTheme::drawGridAndSelectedTitle(GfxRenderer& renderer, Rect rect,
         if (Storage.openFileForRead("HOME", coverBmpPath, file)) {
           Bitmap bitmap(file);
           if (bitmap.parseHeaders() == BmpReaderError::Ok) {
+            // Fit (not crop): scale the bitmap to slotHeight tall, keep its
+            // real aspect ratio, and center it horizontally in the slot. If
+            // the resulting width would overflow the slot (unusually wide
+            // cover), clamp the width instead so it never bleeds into the
+            // next column - only that rare case gets any cropping.
             const float coverW = static_cast<float>(bitmap.getWidth());
             const float coverH = static_cast<float>(bitmap.getHeight());
             const float ratio = coverW / coverH;
-            const float tileRatio = static_cast<float>(tileWidth - 2 * hPaddingInSelection) /
-                                    static_cast<float>(MimeeStyleMetrics::values.homeCoverHeight);
-            const float cropX = 1.0f - (tileRatio / ratio);
-            renderer.drawBitmap(bitmap, tileX + hPaddingInSelection, tileY + hPaddingInSelection,
-                                tileWidth - 2 * hPaddingInSelection, MimeeStyleMetrics::values.homeCoverHeight, cropX);
+            int drawWidth = static_cast<int>(slotHeight * ratio);
+            float cropX = 0.0f;
+            if (drawWidth > slotInnerWidth) {
+              cropX = 1.0f - (static_cast<float>(slotInnerWidth) / static_cast<float>(drawWidth));
+              drawWidth = slotInnerWidth;
+            }
+            const int drawX = tileX + hPaddingInSelection + (slotInnerWidth - drawWidth) / 2;
+            renderer.drawBitmap(bitmap, drawX, tileY + hPaddingInSelection, drawWidth, slotHeight, cropX);
           } else {
             hasCover = false;
           }
@@ -146,16 +156,17 @@ int MimeeStyleTheme::drawGridAndSelectedTitle(GfxRenderer& renderer, Rect rect,
                              tileWidth, hPaddingInSelection, cornerRadius, false, false, true, true, Color::LightGray);
   }
 
-  // --- Selected-title strip, directly under the grid ---
+  // --- Selected-title strip, directly under the grid, right-aligned ---
   const int titleStripY = rect.y + gridHeight + 4;
   if (itemCount > 0 && selectorIndex >= 0 && selectorIndex < itemCount) {
     const int maxWidth = rect.width - 2 * MimeeStyleMetrics::values.contentSidePadding;
     const auto truncatedTitle =
-        renderer.truncatedText(SMALL_FONT_ID, recentBooks[selectorIndex].title.c_str(), maxWidth);
+        renderer.truncatedText(SMALL_FONT_ID, recentBooks[selectorIndex].title.c_str(), maxWidth, EpdFontFamily::BOLD);
     const int lineHeight = renderer.getLineHeight(SMALL_FONT_ID);
-    renderer.drawText(SMALL_FONT_ID, rect.x + MimeeStyleMetrics::values.contentSidePadding,
-                      titleStripY + (selectedTitleStripHeight - lineHeight) / 2, truncatedTitle.c_str(), true,
-                      EpdFontFamily::BOLD);
+    const int textWidth = renderer.getTextWidth(SMALL_FONT_ID, truncatedTitle.c_str(), EpdFontFamily::BOLD);
+    const int textX = rect.x + rect.width - MimeeStyleMetrics::values.contentSidePadding - textWidth;
+    renderer.drawText(SMALL_FONT_ID, textX, titleStripY + (selectedTitleStripHeight - lineHeight) / 2,
+                      truncatedTitle.c_str(), true, EpdFontFamily::BOLD);
   }
 
   return titleStripY + selectedTitleStripHeight;
@@ -167,6 +178,8 @@ int MimeeStyleTheme::drawGridAndSelectedTitle(GfxRenderer& renderer, Rect rect,
 int MimeeStyleTheme::drawContinueReadingStrip(GfxRenderer& renderer, Rect rect, int startY,
                                               const RecentBook& book) const {
   const int tileX = rect.x + MimeeStyleMetrics::values.contentSidePadding;
+  const int coverHeight = MimeeStyleMetrics::values.homeCoverHeight;  // same size as grid covers, per design
+  const int continueReadingStripHeight = coverHeight + continueReadingBottomPadding;
 
   // --- Line B: full-width divider between the grid and this strip.
   // Drawn FIRST so the cover (drawn below) visually overlaps it. ---
@@ -176,7 +189,8 @@ int MimeeStyleTheme::drawContinueReadingStrip(GfxRenderer& renderer, Rect rect, 
   // Cover is shifted up so it straddles line B (pokes above it).
   const int coverTopY = lineBY - continueReadingOverlap;
 
-  int coverWidth = static_cast<int>(continueReadingCoverHeight * 0.6f);
+  // Fit (not crop): scale to coverHeight tall, keep real aspect ratio.
+  int coverWidth = static_cast<int>(coverHeight * 0.6f);  // fallback if no cover art
 
   if (!book.coverBmpPath.empty()) {
     const std::string coverBmpPath =
@@ -188,13 +202,13 @@ int MimeeStyleTheme::drawContinueReadingStrip(GfxRenderer& renderer, Rect rect, 
         const float coverW = static_cast<float>(bitmap.getWidth());
         const float coverH = static_cast<float>(bitmap.getHeight());
         const float ratio = coverW / coverH;
-        coverWidth = static_cast<int>(continueReadingCoverHeight * ratio);
-        renderer.drawBitmap(bitmap, tileX, coverTopY, coverWidth, continueReadingCoverHeight);
+        coverWidth = static_cast<int>(coverHeight * ratio);
+        renderer.drawBitmap(bitmap, tileX, coverTopY, coverWidth, coverHeight);
       }
       file.close();
     }
   }
-  renderer.drawRect(tileX, coverTopY, coverWidth, continueReadingCoverHeight, true);
+  renderer.drawRect(tileX, coverTopY, coverWidth, coverHeight, true);
 
   // Title + author to the right of the thumbnail
   const int textX = tileX + coverWidth + MimeeStyleMetrics::values.verticalSpacing;
@@ -208,7 +222,7 @@ int MimeeStyleTheme::drawContinueReadingStrip(GfxRenderer& renderer, Rect rect, 
   const int authorHeight = book.author.empty() ? 0 : (renderer.getLineHeight(UI_10_FONT_ID) * 3 / 2);
   const int totalBlockHeight = titleBlockHeight + authorHeight;
 
-  int textY = coverTopY + (continueReadingCoverHeight - totalBlockHeight) / 2;
+  int textY = coverTopY + (coverHeight - totalBlockHeight) / 2;
   for (const auto& line : titleLines) {
     renderer.drawText(UI_12_FONT_ID, textX, textY, line.c_str(), true, EpdFontFamily::BOLD);
     textY += titleLineHeight;
