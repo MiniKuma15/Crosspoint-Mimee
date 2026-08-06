@@ -230,22 +230,35 @@ void HomeActivity::loop() {
     return;
   }
 
+  const Rect coverAreaRect{0, metrics.homeTopPadding, renderer.getScreenWidth(), metrics.homeCoverTileHeight};
+
   int tx = 0;
   int ty = 0;
-  if (!recentBooks.empty() && mappedInput.wasScreenTouchDown(tx, ty) && tx >= 0 && tx < renderer.getScreenWidth() &&
-      ty >= metrics.homeTopPadding && ty < metrics.homeTopPadding + metrics.homeCoverTileHeight) {
-    if (selectorIndex != 0) {
-      selectorIndex = 0;
-      requestUpdate();
+  if (!recentBooks.empty() && mappedInput.wasScreenTouchDown(tx, ty)) {
+    int hitIndex = 0;
+    if (GUI.recentBookIndexFromPoint(coverAreaRect, recentBooks, tx, ty, hitIndex)) {
+      if (selectorIndex != hitIndex) {
+        selectorIndex = hitIndex;
+        requestUpdate();
+      }
+      return;
     }
-    return;
   }
 
-  if (!recentBooks.empty() &&
-      mappedInput.wasTapInRect(0, metrics.homeTopPadding, renderer.getScreenWidth(), metrics.homeCoverTileHeight)) {
-    selectorIndex = 0;
-    activateSelection();
-    return;
+  // NOTE: wasTapInRect() has no coordinate output, so it can only ever
+  // activate a single fixed target. Themes whose recentBookIndexFromPoint()
+  // can resolve more than index 0 (i.e. grid themes) need tap coordinates
+  // here instead - swap in mappedInput.wasScreenTapped(tapX, tapY) if your
+  // MappedInputManager exposes it, and drop the wasTapInRect() call below.
+  int tapX = 0;
+  int tapY = 0;
+  if (!recentBooks.empty() && mappedInput.wasScreenTapped(tapX, tapY)) {
+    int hitIndex = 0;
+    if (GUI.recentBookIndexFromPoint(coverAreaRect, recentBooks, tapX, tapY, hitIndex)) {
+      selectorIndex = hitIndex;
+      activateSelection();
+      return;
+    }
   }
 
   const int menuTop = metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.homeMenuTopOffset;
@@ -284,8 +297,11 @@ void HomeActivity::render(RenderLock&&) {
   renderer.clearScreen();
   bool bufferRestored = coverBufferStored && restoreCoverBuffer();
 
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.homeTopPadding},
-                 metrics.homeContinueReadingInMenu && !recentBooks.empty() ? recentBooks[0].title.c_str() : nullptr);
+  const char* headerTitle =
+      metrics.homeStaticTitle != nullptr
+          ? metrics.homeStaticTitle
+          : (metrics.homeContinueReadingInMenu && !recentBooks.empty() ? recentBooks[0].title.c_str() : nullptr);
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.homeTopPadding}, headerTitle);
 
   // Record the tile rect so storeCoverBuffer (called from the theme) knows
   // which sub-region of the framebuffer to snapshot. ~16 KB in Portrait
