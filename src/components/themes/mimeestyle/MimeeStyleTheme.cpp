@@ -31,11 +31,11 @@ constexpr int gridRowGap = 2;
 constexpr int selectedTitleStripHeight = 24;
 constexpr int dividerMarginTop = 8;
 // Gap between the selected-title strip and line B (grid <-> continue-reading divider)
-constexpr int gridToContinueGap = 20;
+constexpr int gridToContinueGap = 14;
 // How far the continue-reading cover pokes above line B
-constexpr int continueReadingOverlap = 14;
+constexpr int continueReadingOverlap = 10;
 // Extra room below the continue-reading cover before line A
-constexpr int continueReadingBottomPadding = 20;
+constexpr int continueReadingBottomPadding = 2;
 // Line A (short divider) insets: left = gap from cover's right edge, right = gap from screen edge
 constexpr int lineAInsetLeft = 8;
 constexpr int lineAInsetRight = 16;
@@ -199,6 +199,7 @@ int MimeeStyleTheme::drawContinueReadingStrip(GfxRenderer& renderer, Rect rect, 
 
   // Fit (not crop): scale to coverHeight tall, keep real aspect ratio.
   int coverWidth = static_cast<int>(coverHeight * 0.6f);  // fallback if no cover art
+  bool drewCover = false;
 
   if (!book.coverBmpPath.empty()) {
     const std::string coverBmpPath =
@@ -211,10 +212,20 @@ int MimeeStyleTheme::drawContinueReadingStrip(GfxRenderer& renderer, Rect rect, 
         const float coverH = static_cast<float>(bitmap.getHeight());
         const float ratio = coverW / coverH;
         coverWidth = static_cast<int>(coverHeight * ratio);
+        // Paint a solid opaque block first - drawBitmap may skip white
+        // source pixels rather than overwrite them, which otherwise lets
+        // line B show through the cover where they overlap.
+        renderer.fillRect(tileX, coverTopY, coverWidth, coverHeight, false);
         renderer.drawBitmap(bitmap, tileX, coverTopY, coverWidth, coverHeight);
+        drewCover = true;
       }
       file.close();
     }
+  }
+  if (!drewCover) {
+    // No cover art (or failed to load) - still paint solid so line B
+    // doesn't show through the placeholder box either.
+    renderer.fillRect(tileX, coverTopY, coverWidth, coverHeight, false);
   }
   renderer.drawRect(tileX, coverTopY, coverWidth, coverHeight, true);
 
