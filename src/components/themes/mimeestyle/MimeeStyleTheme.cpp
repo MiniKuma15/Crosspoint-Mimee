@@ -31,9 +31,11 @@ constexpr int gridRowGap = 2;
 constexpr int selectedTitleStripHeight = 24;
 constexpr int dividerMarginTop = 18;
 // Gap between the selected-title strip and line B (grid <-> continue-reading divider)
-constexpr int gridToContinueGap = 22;
-// How far the continue-reading cover pokes above line B
-constexpr int continueReadingOverlap = 6;
+constexpr int gridToContinueGap = 12;
+// How far the continue-reading cover sits below the grid+title block.
+// Independent of gridToContinueGap now, so moving line B doesn't drag the
+// cover along with it.
+constexpr int continueReadingTopGap = 6;
 // Extra room below the continue-reading cover before line A
 constexpr int continueReadingBottomPadding = 2;
 // Line A (short divider) insets: left = gap from cover's right edge, right = gap from screen edge
@@ -194,8 +196,10 @@ int MimeeStyleTheme::drawContinueReadingStrip(GfxRenderer& renderer, Rect rect, 
   const int lineBY = startY + gridToContinueGap;
   renderer.drawLine(rect.x, lineBY, rect.x + rect.width - 1, lineBY, 2, true);
 
-  // Cover is shifted up so it straddles line B (pokes above it).
-  const int coverTopY = lineBY - continueReadingOverlap;
+  // Cover position is independent of line B now (controlled by
+  // continueReadingTopGap alone) - moving gridToContinueGap only moves the
+  // line, not the cover.
+  const int coverTopY = startY + continueReadingTopGap;
 
   // Fit (not crop): scale to coverHeight tall, keep real aspect ratio.
   int coverWidth = static_cast<int>(coverHeight * 0.6f);  // fallback if no cover art
@@ -316,8 +320,7 @@ bool MimeeStyleTheme::recentBookIndexFromPoint(Rect rect, const std::vector<Rece
   // touch target.
   const int titleStripY = rect.y + gridHeight + 4;
   const int afterGridY = titleStripY + selectedTitleStripHeight;
-  const int lineBY = afterGridY + gridToContinueGap;
-  const int coverTopY = lineBY - continueReadingOverlap;
+  const int coverTopY = afterGridY + continueReadingTopGap;
   const int continueReadingBottom = coverTopY + MimeeStyleMetrics::values.homeCoverHeight + continueReadingBottomPadding;
   if (x >= rect.x && x < rect.x + rect.width && y >= coverTopY && y < continueReadingBottom) {
     index = 0;
