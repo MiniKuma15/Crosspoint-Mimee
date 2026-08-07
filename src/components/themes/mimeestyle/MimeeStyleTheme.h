@@ -20,15 +20,17 @@ constexpr ThemeMetrics values = [] {
   v.homeCoverHeight = 180;
 
   // Header gap.
-  v.homeTopPadding = 90;
+  v.homeTopPadding = 70;
 
   // Total height reserved for: grid (2 rows) + selected-title strip +
   // continue-reading strip + divider lines. Tune this on-device to match
   // your screen resolution exactly.
-  v.homeCoverTileHeight = 642;
+  v.homeCoverTileHeight = 618;
 
-  // Gap between the cover-tile area and the icon toolbar below it.
-  v.homeMenuTopOffset = 24;
+  // Gap between the cover-tile area and the icon toolbar below it. Pulled
+  // way back in - the last round pushed icons far enough down to overlap
+  // the bottom navigation bar.
+  v.homeMenuTopOffset = 2;
 
   // Number of columns in the recent-books grid. Used by HomeActivity so
   // physical Up/Down presses move a full row (vertically) instead of one
