@@ -20,6 +20,8 @@ void EpdFont::getTextBounds(const char* string, const int startX, const int star
   int lastBaseWidth = 0;
   int lastBaseTop = 0;
   int32_t prevAdvanceFP = 0;  // 12.4 fixed-point: prev glyph's advance + next kern for snap
+  int stackedThaiMinY = 0;
+  bool hasStackedThaiUpper = false;
   uint32_t cp;
   uint32_t prevCp = 0;
   while ((cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&string)))) {
@@ -40,12 +42,32 @@ void EpdFont::getTextBounds(const char* string, const int startX, const int star
         lastBaseLeft = 0;
         lastBaseWidth = 0;
         lastBaseTop = 0;
+        hasStackedThaiUpper = false;
       }
       continue;
     }
 
     const combiningMark::Anchor anchor = combiningMark::anchorFor(cp);
-    const int raiseBy = isCombining ? combiningMark::raiseAboveBase(anchor, glyph->top, glyph->height, lastBaseTop) : 0;
+    int raiseBy = isCombining ? combiningMark::raiseAboveBase(anchor, glyph->top, glyph->height, lastBaseTop) : 0;
+    if (isCombining) {
+      // SARA AM (U+0E33) is written AFTER its tone mark, so by the time SARA AM is
+      // reached the tone mark has already been placed - peek ahead here instead so
+      // a tone mark can clear SARA AM's loop before either glyph is drawn.
+      if (utf8IsThaiUpperLevelThreeMark(cp)) {
+        const unsigned char* peekPtr = reinterpret_cast<const unsigned char*>(string);
+        const uint32_t nextCp = utf8NextCodepoint(&peekPtr);
+        if (nextCp == 0x0E33) {
+          const EpdGlyph* saraAmGlyph = getGlyph(nextCp);
+          if (saraAmGlyph) {
+            constexpr int SARA_AM_CEILING_ADJUST_PX = 26;
+            const int saraAmMinY = startY + saraAmGlyph->top - saraAmGlyph->height + SARA_AM_CEILING_ADJUST_PX;
+            stackedThaiMinY = (hasStackedThaiUpper && stackedThaiMinY < saraAmMinY) ? stackedThaiMinY : saraAmMinY;
+            hasStackedThaiUpper = true;
+          }
+        }
+      }
+      thaiUpperMarkStack(cp, glyph->top, glyph->height, startY, &raiseBy, &stackedThaiMinY, &hasStackedThaiUpper);
+    }
 
     if (!isCombining && prevCp != 0) {
       const auto kernFP = getKerning(prevCp, cp);  // 4.4 fixed-point kern
@@ -53,7 +75,7 @@ void EpdFont::getTextBounds(const char* string, const int startX, const int star
     }
 
     const int glyphBaseX = isCombining ? combiningMark::anchorOver(anchor, lastBaseX, lastBaseLeft, lastBaseWidth,
-                                                                   glyph->left, glyph->width)
+                                                                   glyph->left, glyph->width, prevCp)
                                        : lastBaseX;
     const int glyphBaseY = startY - raiseBy;
 
@@ -63,11 +85,20 @@ void EpdFont::getTextBounds(const char* string, const int startX, const int star
     *maxY = std::max(*maxY, glyphBaseY + glyph->top);
 
     if (!isCombining) {
-      lastBaseLeft = glyph->left;
-      lastBaseWidth = glyph->width;
-      lastBaseTop = glyph->top;
+      // Thai SARA AM (U+0E33) hangs its loop above the consonant like a vowel, but
+      // is written AFTER any tone mark in standard Thai order (consonant + tone
+      // mark + SARA AM) - unlike ordinary vowels, which come BEFORE their tone
+      // mark. It can't feed the stacking bookkeeping forward the way "ที่" does;
+      // see the lookahead beside thaiUpperMarkStack() below instead. Just don't
+      // let its own loop become the "base" a tone mark measures against.
+      if (cp != 0x0E33) {
+        lastBaseLeft = glyph->left;
+        lastBaseWidth = glyph->width;
+        lastBaseTop = glyph->top;
+      }
       prevAdvanceFP = glyph->advanceX;  // 12.4 fixed-point
       prevCp = cp;
+      hasStackedThaiUpper = false;
     }
   }
 }

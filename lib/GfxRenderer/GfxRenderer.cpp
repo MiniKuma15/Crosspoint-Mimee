@@ -202,7 +202,8 @@ int GfxRenderer::resolveTextFontId(const int fontId, const char* text, const Epd
     // Latin/symbol strings the built-in UI fonts already cover are left
     // untouched, and a partial-coverage fallback (e.g. kana-only) is not worth
     // dragging the whole string into for glyphs it would also miss.
-    if (utf8IsCjkCodepoint(cp) && !primary.hasCodepoint(cp, style) && fallback.hasCodepoint(cp, style)) {
+    if ((utf8IsCjkCodepoint(cp) || utf8IsThaiScriptCodepoint(cp)) && !primary.hasCodepoint(cp, style) &&
+        fallback.hasCodepoint(cp, style)) {
       return fallbackFontId;
     }
   }
@@ -572,6 +573,8 @@ void GfxRenderer::drawText(const int fontId, const int x, const int y, const cha
   int lastBaseWidth = 0;
   int lastBaseTop = 0;
   int32_t prevAdvanceFP = 0;  // 12.4 fixed-point: prev glyph's advance + next kern for snap
+  int stackedThaiMinY = 0;
+  bool hasStackedThaiUpper = false;
 
   if (fontCacheManager_ && fontCacheManager_->isScanning()) {
     fontCacheManager_->recordText(renderedText, resolvedFontId, style);
@@ -600,10 +603,27 @@ void GfxRenderer::drawText(const int fontId, const int x, const int y, const cha
       const EpdGlyph* combiningGlyph = font.getGlyph(cp, style);
       if (!combiningGlyph) continue;
       const auto anchor = combiningMark::anchorFor(cp);
-      const int raiseBy =
+      int raiseBy =
           combiningMark::raiseAboveBase(anchor, combiningGlyph->top, combiningGlyph->height, lastBaseTop);
+      // SARA AM (U+0E33) is written AFTER its tone mark, so by the time SARA AM is
+      // reached the tone mark has already been drawn - peek ahead here instead.
+      if (utf8IsThaiUpperLevelThreeMark(cp)) {
+        const unsigned char* peekPtr = reinterpret_cast<const unsigned char*>(textCursor);
+        const uint32_t nextCp = utf8NextCodepoint(&peekPtr);
+        if (nextCp == 0x0E33) {
+          const EpdGlyph* saraAmGlyph = font.getGlyph(nextCp, style);
+          if (saraAmGlyph) {
+            constexpr int SARA_AM_CEILING_ADJUST_PX = 26;
+            const int saraAmMinY = yPos + saraAmGlyph->top - saraAmGlyph->height + SARA_AM_CEILING_ADJUST_PX;
+            stackedThaiMinY = (hasStackedThaiUpper && stackedThaiMinY < saraAmMinY) ? stackedThaiMinY : saraAmMinY;
+            hasStackedThaiUpper = true;
+          }
+        }
+      }
+      thaiUpperMarkStack(cp, combiningGlyph->top, combiningGlyph->height, yPos, &raiseBy, &stackedThaiMinY,
+                        &hasStackedThaiUpper);
       const int combiningX = combiningMark::anchorOver(anchor, lastBaseX, lastBaseLeft, lastBaseWidth,
-                                                       combiningGlyph->left, combiningGlyph->width);
+                                                       combiningGlyph->left, combiningGlyph->width, prevCp);
       renderCharImpl<TextRotation::None>(*this, renderMode, font, cp, combiningX, yPos - raiseBy, black, style);
       continue;
     }
@@ -620,10 +640,16 @@ void GfxRenderer::drawText(const int fontId, const int x, const int y, const cha
 
     const EpdGlyph* glyph = font.getGlyph(cp, style);
 
-    lastBaseLeft = glyph ? glyph->left : 0;
-    lastBaseWidth = glyph ? glyph->width : 0;
-    lastBaseTop = glyph ? glyph->top : 0;
+    // Thai SARA AM (U+0E33) hangs its loop above the consonant, but is written
+    // AFTER any tone mark in standard Thai order - see the lookahead beside
+    // thaiUpperMarkStack() below instead of feeding stacking bookkeeping here.
+    if (cp != 0x0E33) {
+      lastBaseLeft = glyph ? glyph->left : 0;
+      lastBaseWidth = glyph ? glyph->width : 0;
+      lastBaseTop = glyph ? glyph->top : 0;
+    }
     prevAdvanceFP = glyph ? glyph->advanceX : 0;  // 12.4 fixed-point
+    hasStackedThaiUpper = false;
 
     const bool isSupSub = (style & (EpdFontFamily::SUP | EpdFontFamily::SUB)) != 0;
     if (isSupSub) {

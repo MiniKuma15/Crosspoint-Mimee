@@ -26,6 +26,10 @@ int utf8SafeTruncateBuffer(const char* buf, int len);
 // Returns true for CJK characters that allow line breaks on either side without hyphenation.
 // Covers CJK Unified Ideographs, Hiragana, Katakana, Hangul Syllables, CJK punctuation,
 // and fullwidth forms — the ranges where word boundaries are implicit per character.
+inline bool utf8IsThaiLeadingVowel(const uint32_t cp) {
+  return cp >= 0x0E40 && cp <= 0x0E44;  // เ แ โ ใ ไ - almost always starts a new word
+}
+
 inline bool utf8IsCjkBreakable(const uint32_t cp) {
   return (cp >= 0x1100 && cp <= 0x11FF)        // Hangul Jamo
          || (cp >= 0x3000 && cp <= 0x303F)     // CJK Symbols and Punctuation
@@ -67,10 +71,75 @@ inline bool utf8IsCjkCodepoint(const uint32_t cp) {
          || (cp >= 0x30000 && cp <= 0x323AF);  // CJK Extensions G-H
 }
 
+// Thai vowels/marks that hang BELOW the consonant (SARA U, SARA UU, PHINTHU).
+// Rendered at font-native vertical position - never raised.
+inline bool utf8IsThaiLowerCombiningMark(const uint32_t cp) {
+  return cp >= 0x0E38 && cp <= 0x0E3A;
+}
+
+// Thai vowels/tone marks/misc that sit ABOVE the consonant.
+inline bool utf8IsThaiUpperCombiningMark(const uint32_t cp) {
+  return cp == 0x0E31                     // MAI HAN-AKAT
+         || (cp >= 0x0E34 && cp <= 0x0E37)   // SARA I/II/UE/UEE
+         || (cp >= 0x0E47 && cp <= 0x0E4E);  // MAITAIKHU, tone marks, THANTHAKHAT, NIKHAHIT, YAMAKKAN
+}
+
+// Level 2: sits directly on the consonant (upper vowels, MAI HAN-AKAT, MAI TAIKHU, NIKHAHIT).
+inline bool utf8IsThaiUpperLevelTwoMark(const uint32_t cp) {
+  return cp == 0x0E31 || (cp >= 0x0E34 && cp <= 0x0E37) || cp == 0x0E47 || cp == 0x0E4D;
+}
+
+// Level 3: stacks ABOVE whatever is already placed (4 tone marks + THANTHAKHAT + YAMAKKAN).
+inline bool utf8IsThaiUpperLevelThreeMark(const uint32_t cp) {
+  return (cp >= 0x0E48 && cp <= 0x0E4C) || cp == 0x0E4E;
+}
+
+inline bool utf8IsThaiCombiningMark(const uint32_t cp) {
+  return utf8IsThaiLowerCombiningMark(cp) || utf8IsThaiUpperCombiningMark(cp);
+}
+
+// Returns true for any codepoint in the Thai Unicode block (consonants, vowels,
+// tone marks, digits, punctuation). Used for fallback font selection, the same
+// way utf8IsCjkCodepoint is used for CJK.
+inline bool utf8IsThaiScriptCodepoint(const uint32_t cp) {
+  return cp >= 0x0E00 && cp <= 0x0E7F;
+}
+
 // Returns true for Unicode combining diacritical marks that should not advance the cursor.
 inline bool utf8IsCombiningMark(const uint32_t cp) {
   return (cp >= 0x0300 && cp <= 0x036F)      // Combining Diacritical Marks
          || (cp >= 0x1DC0 && cp <= 0x1DFF)   // Combining Diacritical Marks Supplement
          || (cp >= 0x20D0 && cp <= 0x20FF)   // Combining Diacritical Marks for Symbols
-         || (cp >= 0xFE20 && cp <= 0xFE2F);  // Combining Half Marks
+         || (cp >= 0xFE20 && cp <= 0xFE2F)   // Combining Half Marks
+         || utf8IsThaiCombiningMark(cp);
+}
+
+// Adjusts `*raiseBy` so a Thai "level 3" mark (tone marks etc.) stacks ABOVE a
+// "level 2" mark (vowel) already placed on the same base glyph, instead of
+// landing back on the base. No-op for non-Thai marks. `*stackedUpperMinY` /
+// `*hasStackedUpper` carry state across marks sharing one base - the caller
+// must reset `*hasStackedUpper = false` whenever a new base (non-combining)
+// glyph is processed.
+inline void thaiUpperMarkStack(const uint32_t cp, const int glyphTop, const int glyphHeight, const int penY,
+                               int* raiseBy, int* stackedUpperMinY, bool* hasStackedUpper) {
+  if (!utf8IsThaiUpperCombiningMark(cp)) return;
+
+  int glyphMinY = penY - *raiseBy + glyphTop - glyphHeight;
+  int glyphMaxY = penY - *raiseBy + glyphTop;
+
+  if (utf8IsThaiUpperLevelThreeMark(cp) && *hasStackedUpper) {
+    constexpr int MIN_STACK_GAP_PX = 1;
+    const int desiredMaxY = *stackedUpperMinY - MIN_STACK_GAP_PX;
+    if (glyphMaxY > desiredMaxY) {
+      const int extraRaise = glyphMaxY - desiredMaxY;
+      *raiseBy += extraRaise;
+      glyphMinY -= extraRaise;
+      glyphMaxY -= extraRaise;
+    }
+  }
+
+  if (utf8IsThaiUpperLevelTwoMark(cp) || utf8IsThaiUpperLevelThreeMark(cp)) {
+    *stackedUpperMinY = (*hasStackedUpper && *stackedUpperMinY < glyphMinY) ? *stackedUpperMinY : glyphMinY;
+    *hasStackedUpper = true;
+  }
 }

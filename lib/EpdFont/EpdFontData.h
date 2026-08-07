@@ -48,6 +48,11 @@ enum class Anchor : uint8_t {
   CenterNative,  ///< centered over the base at font-native height
   RightNative,   ///< right edges aligned, font-native height
   LeftNative,    ///< left edges aligned, font-native height
+  RightRaised,   ///< right-shifted over the base, lifted above its top (Thai tone marks)
+  RightRaisedNear,  ///< right-shifted (own fraction) - Thai MAI HAN-AKAT only
+  RightNativeNearU,   ///< right-shifted (per-consonant table), native height - Thai SARA U
+  RightNativeNearUU,  ///< right-shifted (per-consonant table), native height - Thai SARA UU
+  RightRaisedFar,   ///< right-shifted (own fraction), separate from tone marks - Thai THANTHAKHAT only
 };
 
 constexpr Anchor anchorFor(const uint32_t cp) {
@@ -60,6 +65,21 @@ constexpr Anchor anchorFor(const uint32_t cp) {
     case 0x05B9:  // holam: above the letter's left corner
     case 0x05C2:  // sin dot: over the letter's left arm
       return Anchor::LeftNative;
+    case 0x0E38:  // Thai SARA U: hangs below the consonant (own anchor, per-consonant table)
+      return Anchor::RightNativeNearU;
+    case 0x0E39:  // Thai SARA UU: hangs below the consonant (own anchor, per-consonant table)
+      return Anchor::RightNativeNearUU;
+    case 0x0E3A:  // Thai PHINTHU: sits below the consonant
+      return Anchor::CenterNative;
+    case 0x0E31:  // Thai MAI HAN-AKAT (own anchor, tuned separately from tone marks)
+    case 0x0E49:  // Thai MAI THO (moved to same right-shift as mai-han-akat per request)
+      return Anchor::RightRaisedNear;
+    case 0x0E48:  // Thai MAI EK
+    case 0x0E4A:  // Thai MAI TRI
+    case 0x0E4B:  // Thai MAI CHATTAWA
+      return Anchor::RightRaised;
+    case 0x0E4C:  // Thai THANTHAKHAT (karan) - own anchor, tuned separately from tone marks
+      return Anchor::RightRaisedFar;
     default:
       return Anchor::CenterRaised;
   }
@@ -67,12 +87,75 @@ constexpr Anchor anchorFor(const uint32_t cp) {
 
 /// Horizontal offset from the base bitmap's left edge to the mark bitmap's
 /// left edge for a given anchor.
-constexpr int anchorShift(const Anchor anchor, const int baseWidth, const int markWidth) {
+constexpr int anchorShift(const Anchor anchor, const int baseWidth, const int markWidth,
+                          const uint32_t baseCp = 0) {
   switch (anchor) {
     case Anchor::LeftNative:
       return 0;
     case Anchor::RightNative:
       return baseWidth - markWidth;
+    case Anchor::RightRaisedNear: {
+      // ไม่ clamp กับ maxShift เพราะ markWidth (รวมหาง) ใกล้เคียง baseWidth อยู่แล้ว
+      // ปรับตัวเลขนี้ (พิกเซล) ทีละ 2-4 จนกว่าหัวจะขยับมาทางขวาพอดี
+      constexpr int MAI_HAN_AKAT_RIGHT_SHIFT_PX = 8;
+      const int shifted = (baseWidth / 2 - markWidth / 2) + MAI_HAN_AKAT_RIGHT_SHIFT_PX;
+      return shifted;
+    }
+    case Anchor::RightNativeNearU: {
+      // สระอุ: ตารางค่าเยื้องขวาต่อพยัญชนะ (พิกเซล) ปรับแต่ละกลุ่มแยกกันได้อิสระ
+      constexpr int DEFAULT_PX = 4;
+      constexpr int REDUCED_PX = 2;   // ธ ย ฮ - เยื้องขวาน้อยกว่าปกติ
+      constexpr int MORE_PX = 6;      // ฌ ฑ ฒ ณ - เยื้องขวามากกว่าปกติ
+      constexpr int SO_PX = 3;        // ส เสือ - ปรับแยกต่างหาก (ปรับตัวเลขนี้จุดเดียวได้อิสระ)
+      constexpr int RO_PX = 0;        // ร เรือ - พอดีอยู่แล้ว ไม่ต้องเยื้อง
+      int shiftPx = DEFAULT_PX;
+      switch (baseCp) {
+        case 0x0E18: case 0x0E22: case 0x0E2E:  // ธ ย ฮ
+          shiftPx = REDUCED_PX; break;
+        case 0x0E0C: case 0x0E11: case 0x0E12: case 0x0E13:  // ฌ ฑ ฒ ณ
+          shiftPx = MORE_PX; break;
+        case 0x0E2A:  // ส
+          shiftPx = SO_PX; break;
+        case 0x0E23:  // ร
+          shiftPx = RO_PX; break;
+        default: break;
+      }
+      return (baseWidth / 2 - markWidth / 2) + shiftPx;
+    }
+    case Anchor::RightNativeNearUU: {
+      // สระอู: ตารางค่าเยื้องขวาต่อพยัญชนะ (พิกเซล) ปรับแต่ละกลุ่มแยกกันได้อิสระ
+      constexpr int DEFAULT_PX = 4;
+      constexpr int REDUCED_PX = 2;   // ก ค ฅ ช ด ต ถ ธ ผ ฝ ย ศ ษ อ ฮ - เยื้องขวาน้อยกว่าปกติ
+      constexpr int MORE_PX = 6;      // ฌ - เยื้องขวามากกว่าปกติ
+      constexpr int SO_PX = 3;        // ส เสือ - ปรับแยกต่างหาก (ปรับตัวเลขนี้จุดเดียวได้อิสระ)
+      constexpr int RO_PX = 0;        // ร เรือ - พอดีอยู่แล้ว ไม่ต้องเยื้อง
+      int shiftPx = DEFAULT_PX;
+      switch (baseCp) {
+        case 0x0E01: case 0x0E04: case 0x0E05: case 0x0E0A: case 0x0E14: case 0x0E15:
+        case 0x0E16: case 0x0E18: case 0x0E1C: case 0x0E1D: case 0x0E22: case 0x0E28:
+        case 0x0E29: case 0x0E2D: case 0x0E2E:  // ก ค ฅ ช ด ต ถ ธ ผ ฝ ย ศ ษ อ ฮ
+          shiftPx = REDUCED_PX; break;
+        case 0x0E0C:  // ฌ
+          shiftPx = MORE_PX; break;
+        case 0x0E2A:  // ส
+          shiftPx = SO_PX; break;
+        case 0x0E23:  // ร
+          shiftPx = RO_PX; break;
+        default: break;
+      }
+      return (baseWidth / 2 - markWidth / 2) + shiftPx;
+    }
+    case Anchor::RightRaisedFar: {
+      // การันต์ - แยกอิสระจากวรรณยุกต์ ปรับตัวเลขนี้ (พิกเซล) ทีละ 2-4
+      constexpr int KARAN_RIGHT_SHIFT_PX = 6;
+      const int shifted = (baseWidth / 2 - markWidth / 2) + KARAN_RIGHT_SHIFT_PX;
+      return shifted;
+    }
+    case Anchor::RightRaised: {
+      const int shifted = (baseWidth / 2 - markWidth / 2) + (baseWidth * 3 / 8);
+      const int maxShift = baseWidth - markWidth;  // never push past the base's right edge
+      return (shifted > maxShift) ? maxShift : shifted;
+    }
     default:
       return baseWidth / 2 - markWidth / 2;
   }
@@ -81,8 +164,8 @@ constexpr int anchorShift(const Anchor anchor, const int baseWidth, const int ma
 /// Compute the cursor-X at which to render a combining mark so its bitmap
 /// lands at its anchor position over the base glyph's bitmap.
 constexpr int anchorOver(const Anchor anchor, const int baseCursorPos, const int baseLeft, const int baseWidth,
-                         const int markLeft, const int markWidth) {
-  return baseCursorPos + baseLeft + anchorShift(anchor, baseWidth, markWidth) - markLeft;
+                         const int markLeft, const int markWidth, const uint32_t baseCp = 0) {
+  return baseCursorPos + baseLeft + anchorShift(anchor, baseWidth, markWidth, baseCp) - markLeft;
 }
 
 /// Rotated-90CW variant of anchorOver.  In the rotated coordinate system
@@ -100,7 +183,9 @@ constexpr int anchorOverRotated90CW(const Anchor anchor, const int baseCursorPos
 /// keep the font-native height (dagesh must stay inside the letter, the
 /// shin/sin dots touch its arms).
 constexpr int raiseAboveBase(const Anchor anchor, const int markTop, const int markHeight, const int baseTop) {
-  if (anchor != Anchor::CenterRaised) return 0;
+  if (anchor != Anchor::CenterRaised && anchor != Anchor::RightRaised && anchor != Anchor::RightRaisedNear &&
+      anchor != Anchor::RightRaisedFar)
+    return 0;
   if (markTop - markHeight <= 0) return 0;
   const int gap = markTop - markHeight - baseTop;
   return (gap < MIN_GAP_PX) ? (MIN_GAP_PX - gap) : 0;

@@ -137,6 +137,10 @@ bool containsCjkBreakableCodepoint(const std::string& text) {
 }
 
 bool hasCjkBreakOpportunityBetween(const uint32_t leftCp, const uint32_t rightCp) {
+  // Thai leading vowels (เ แ โ ใ ไ) always precede the consonant they belong to,
+  // so a break is only safe BEFORE one, never after.
+  if (utf8IsThaiLeadingVowel(rightCp) && !utf8IsThaiLeadingVowel(leftCp)) return true;
+  if (utf8IsThaiLeadingVowel(leftCp)) return false;
   if (!utf8IsCjkBreakable(leftCp) && !utf8IsCjkBreakable(rightCp)) return false;
   if (isNoBreakAfterCjkPunctuation(leftCp) || isNoBreakBeforeCjkPunctuation(rightCp)) return false;
   if (utf8IsCombiningMark(rightCp)) return false;
@@ -923,7 +927,7 @@ std::vector<size_t> ParsedText::computeHyphenatedLineBreaks(const GfxRenderer& r
 
       // Word would overflow — try to split based on hyphenation points
       const int availableWidth = effectivePageWidth - lineWidth - spacing;
-      const bool allowFallbackBreaks = isFirstWord;  // Only for first word on line
+      const bool allowFallbackBreaks = true;  // Try to fill remaining space on any word, not just the first
 
       if (availableWidth > 0 &&
           hyphenateWordAtIndex(currentIndex, availableWidth, renderer, fontId, wordWidths, allowFallbackBreaks)) {
@@ -1037,7 +1041,12 @@ bool ParsedText::hyphenateWordAtIndex(const size_t wordIndex, const int availabl
   // line, while "kilometer" moves to the next line.
   // wordContinues[wordIndex] is intentionally left unchanged — the prefix keeps its original attachment.
   wordContinues.insert(wordContinues.begin() + wordIndex + 1, false);
-  wordNoSpaceBefore.insert(wordNoSpaceBefore.begin() + wordIndex + 1, false);
+  // For no-hyphen breaks (CJK/Thai dictionary breaks), the two pieces are visually
+  // one continuous run of script with no space between them. If a hyphenation break
+  // ever fires speculatively (e.g. during DP-based whole-paragraph layout) and both
+  // pieces end up on the SAME line rather than being split across lines, we must not
+  // insert a synthetic space between them - noSpaceBefore=true prevents that.
+  wordNoSpaceBefore.insert(wordNoSpaceBefore.begin() + wordIndex + 1, !chosenNeedsHyphen);
 
   // Update cached widths to reflect the new prefix/remainder pairing.
   wordWidths[wordIndex] = static_cast<uint16_t>(chosenWidth);

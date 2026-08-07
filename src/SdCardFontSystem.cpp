@@ -137,7 +137,7 @@ void SdCardFontSystem::setupUiFallbacks(GfxRenderer& renderer) {
   const auto readerIt = renderer.getFontMap().find(manager_.getFontId(familyName));
   if (readerIt == renderer.getFontMap().end()) return;
   // One representative codepoint per script: Han, Hiragana, Katakana, Hangul.
-  static constexpr uint32_t kCjkProbes[] = {0x4E00, 0x3042, 0x30A2, 0xAC00};
+  static constexpr uint32_t kCjkProbes[] = {0x4E00, 0x3042, 0x30A2, 0xAC00, 0x0E01};  // + Thai KO KAI
   bool hasCjk = false;
   for (const uint32_t cp : kCjkProbes) {
     if (readerIt->second.hasCodepoint(cp)) {
