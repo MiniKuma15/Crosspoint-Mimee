@@ -19,13 +19,16 @@ constexpr ThemeMetrics values = [] {
   // height (same size, per design). Back to 180 - kept, not shrunk.
   v.homeCoverHeight = 180;
 
-  // Header gap.
-  v.homeTopPadding = 70;
+  // Header gap. Nudged down a little - freed up by shrinking
+  // gridToContinueGap below (that gap no longer needs to be big now that
+  // the cover is painted opaque, so line B can't show through it anyway).
+  v.homeTopPadding = 78;
 
   // Total height reserved for: grid (2 rows) + selected-title strip +
-  // continue-reading strip + divider lines. Tune this on-device to match
-  // your screen resolution exactly.
-  v.homeCoverTileHeight = 618;
+  // continue-reading strip + divider lines. Reduced by exactly the same
+  // amount homeTopPadding went up, so the icon row's position is
+  // unchanged (homeTopPadding + this + homeMenuTopOffset stays constant).
+  v.homeCoverTileHeight = 610;
 
   // Gap between the cover-tile area and the icon toolbar below it. Pulled
   // way back in - the last round pushed icons far enough down to overlap
@@ -42,9 +45,6 @@ constexpr ThemeMetrics values = [] {
   // Continue-reading title is never shown in the header for this theme
   // (it's shown in its own strip instead)
   v.homeContinueReadingInMenu = false;
-
-  // Gap between the cover-tile area and the icon toolbar below it
-  v.homeMenuTopOffset = 8;
 
   // Height of the icon-toolbar row (repurposed menuRowHeight, since
   // drawButtonMenu below only ever receives 4 items for this theme)

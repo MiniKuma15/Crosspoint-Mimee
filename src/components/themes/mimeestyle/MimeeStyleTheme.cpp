@@ -31,9 +31,9 @@ constexpr int gridRowGap = 2;
 constexpr int selectedTitleStripHeight = 24;
 constexpr int dividerMarginTop = 8;
 // Gap between the selected-title strip and line B (grid <-> continue-reading divider)
-constexpr int gridToContinueGap = 14;
+constexpr int gridToContinueGap = 6;
 // How far the continue-reading cover pokes above line B
-constexpr int continueReadingOverlap = 10;
+constexpr int continueReadingOverlap = 6;
 // Extra room below the continue-reading cover before line A
 constexpr int continueReadingBottomPadding = 2;
 // Line A (short divider) insets: left = gap from cover's right edge, right = gap from screen edge
